@@ -1,0 +1,19 @@
+{
+    "name": "joao-fsilva/rinha-de-backend-2025",
+    "description": "Rinha de Backend 2025",
+    "type": "project",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "João Paulo Silva",
+            "email": "joaopaulosil@yahoo.com.br"
+        }
+    ],
+    "minimum-stability": "stable",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    }
+}
