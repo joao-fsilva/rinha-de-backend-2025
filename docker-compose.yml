@@ -29,10 +29,9 @@ services:
           memory: '120M'
     networks:
       - rinha-net
-      -
   app1:
     build:
-      context: ./php
+      context: .
       dockerfile: Dockerfile
     hostname: app1
     restart: always
@@ -49,9 +48,9 @@ services:
 
   app2:
     build:
-      context: ./php
+      context: .
       dockerfile: Dockerfile
-    hostname: app1
+    hostname: app2
     restart: always
     depends_on:
       - db

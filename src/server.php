@@ -10,14 +10,20 @@ use App\PaymentProcessor;
 
 $server = new Server("0.0.0.0", 80, SWOOLE_BASE);
 $server->set([
-    'worker_num' => (int) shell_exec('nproc') ?: 4, // Use all available cores
+    'worker_num' => 1, // Optimal for 0.5 CPU limit
     'enable_coroutine' => true,
     'log_level' => SWOOLE_LOG_WARNING,
     'log_file' => '/dev/stderr' // Redirect logs to stderr for Docker
 ]);
 
-// Initialize Health Checker in the first worker
-$server->on('workerStart', function (Server $server, int $workerId) {
+$processor = null;
+
+// Initialize services in each worker
+$server->on('workerStart', function (Server $server, int $workerId) use (&$processor) {
+    // Instantiate the processor once per worker
+    $processor = new PaymentProcessor();
+
+    // Initialize Health Checker only in the first worker
     if ($workerId === 0) {
         go(function() {
             $healthCheck = new HealthCheck();
@@ -27,9 +33,8 @@ $server->on('workerStart', function (Server $server, int $workerId) {
 });
 
 // Handle incoming requests
-$server->on('request', function (Request $request, Response $response) {
+$server->on('request', function (Request $request, Response $response) use (&$processor) {
     try {
-        $processor = new PaymentProcessor();
         if ($request->server['request_uri'] === '/payments' && $request->server['request_method'] === 'POST') {
             $processor->handlePayment($request, $response);
         } elseif (str_starts_with($request->server['request_uri'], '/payments-summary') && $request->server['request_method'] === 'GET') {

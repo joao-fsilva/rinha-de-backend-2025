@@ -21,7 +21,7 @@ class HealthCheck
     public function __construct()
     {
         $this->redis = new Redis();
-        $this->redis->pconnect(getenv('REDIS_HOST') ?: 'cache');
+        $this->redis->pconnect('cache');
     }
 
     public function start(): void

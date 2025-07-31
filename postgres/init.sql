@@ -10,6 +10,3 @@ CREATE TABLE transactions (
 
 -- Create an index on the timestamp for faster summary queries
 CREATE INDEX idx_transactions_created_at ON transactions(created_at);
-
--- Optional: Create an index on the processor for faster filtering
-CREATE INDEX idx_transactions_processor ON transactions(processor);

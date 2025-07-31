@@ -12,13 +12,10 @@ class Database
     public function __construct()
     {
         if (self::$pdo === null) {
-            $host = getenv('DB_HOST') ?: 'db';
-            $port = getenv('DB_PORT') ?: '5432';
-            $dbname = getenv('DB_NAME') ?: 'rinhabackend';
-            $user = getenv('DB_USER') ?: 'rinhabackend';
-            $password = getenv('DB_PASS') ?: 'rinhabackend';
+            $user = 'rinhabackend';
+            $password ='rinhabackend';
             
-            $dsn = "pgsql:host=$host;port=$port;dbname=$dbname";
+            $dsn = "pgsql:host=db;port=5432;dbname=rinhabackend";
 
             // Persist the connection to avoid reconnecting on every request
             $options = [
