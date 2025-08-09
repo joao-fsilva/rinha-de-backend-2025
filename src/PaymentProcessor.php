@@ -31,7 +31,7 @@ class PaymentProcessor
         }
 
         $correlationId = (string) $data['correlationId'];
-        $amount = (int)($data['amount'] * 100);
+        $amount = (float) $data['amount'];
 
         $default_latency = $this->getLatency('default');
         $fallback_latency = $this->getLatency('fallback');
@@ -118,7 +118,7 @@ class PaymentProcessor
         return $success;
     }
 
-    private function saveTransaction(string $correlationId, int $amount, string $processor): void
+    private function saveTransaction(string $correlationId, float $amount, string $processor): void
     {
         $stmt = $this->pdo->prepare(
             "INSERT INTO transactions (correlation_id, amount, processor, created_at) VALUES (?, ?, ?, NOW())"
