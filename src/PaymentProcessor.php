@@ -82,12 +82,20 @@ class PaymentProcessor
              GROUP BY processor"
         );
         $stmt->execute([':from' => $from, ':to' => $to]);
-        $results = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $summary = [
-            'default' => ['totalRequests' => (int)($results['default']['totalRequests'] ?? 0), 'totalAmount' => (int)($results['default']['totalAmount'] ?? 0)],
-            'fallback' => ['totalRequests' => (int)($results['fallback']['totalRequests'] ?? 0), 'totalAmount' => (int)($results['fallback']['totalAmount'] ?? 0)],
+            'default' => ['totalRequests' => 0, 'totalAmount' => 0],
+            'fallback' => ['totalRequests' => 0, 'totalAmount' => 0],
         ];
+
+        foreach ($rows as $row) {
+            $processor = $row['processor'];
+            if (isset($summary[$processor])) {
+                $summary[$processor]['totalRequests'] = (int) $row['totalrequests'];
+                $summary[$processor]['totalAmount'] = (int) $row['totalamount'];
+            }
+        }
 
         $response->header('Content-Type', 'application/json');
         $response->end(json_encode($summary));

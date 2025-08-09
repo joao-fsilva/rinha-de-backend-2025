@@ -22,6 +22,11 @@ services:
       - POSTGRES_DB=rinhabackend
     volumes:
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rinhabackend -d rinhabackend"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     deploy:
       resources:
         limits:
@@ -36,10 +41,13 @@ services:
     hostname: app1
     restart: always
     depends_on:
-      - db
-      - cache
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_started
     networks:
       - rinha-net
+      - payment-processor
     deploy:
       resources:
         limits:
@@ -53,10 +61,13 @@ services:
     hostname: app2
     restart: always
     depends_on:
-      - db
-      - cache
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_started
     networks:
       - rinha-net
+      - payment-processor
     deploy:
       resources:
         limits:
@@ -84,3 +95,5 @@ services:
 networks:
   rinha-net:
     driver: bridge
+  payment-processor:
+    external: true
