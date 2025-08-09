@@ -50,15 +50,19 @@ class HealthCheck
             $client->set(['timeout' => 4]);
             $client->get('/payments/service-health');
             
-            if ($client->statusCode === 200 && !empty($client->body)) {
+            if ($client->statusCode >= 200 && $client->statusCode < 300 && !empty($client->body)) {
                 $body = json_decode($client->body, true);
-                // Usa a latência reportada, ou um default alto se a chave não existir
-                $latency = $body['minResponseTime'] ?? self::UNHEALTHY_LATENCY;
+                if (isset($body['failing']) && $body['failing'] === false) {
+                    $latency = $body['minResponseTime'] ?? self::UNHEALTHY_LATENCY;
+                }
+            } else {
+                error_log("NAME=$name QUEBRADO. status code: {$client->statusCode}, body: {$client->body}");
             }
             $client->close();
         } catch (\Throwable $e) {
             error_log("Health check failed for $name: " . $e->getMessage());
         } finally {
+            error_log("Service $name latency: $latency ms UPDATED!");
             $this->redis->set(self::LATENCY_KEY_PREFIX . $name, $latency, ['ex' => self::HEALTH_KEY_TTL_S]);
         }
     }

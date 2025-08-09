@@ -27,14 +27,12 @@ error_log("server.php: Server settings applied.");
 
 $processor = null;
 
-// Initialize services in each worker
 $server->on('workerStart', function (Server $server, int $workerId) use (&$processor) {
-    error_log("server.php: workerStart event triggered.");
-    // Instantiate the processor once per worker
+    error_log("server.php: workerStart event triggered. $workerId");
     $processor = new PaymentProcessor();
 
-    // Initialize Health Checker only in the first worker
-    if ($workerId === 0) {
+    if ($workerId === 0 && getenv('IS_HEALTH_CHECKER') === 'true') {
+        error_log("Starting HealthCheck on this worker.");
         go(function() {
             $healthCheck = new HealthCheck();
             $healthCheck->start();
@@ -42,7 +40,6 @@ $server->on('workerStart', function (Server $server, int $workerId) use (&$proce
     }
 });
 
-// Handle incoming requests
 $server->on('request', function (Request $request, Response $response) use (&$processor) {
     error_log("server.php: Request event triggered.");
     try {
@@ -51,11 +48,13 @@ $server->on('request', function (Request $request, Response $response) use (&$pr
         } elseif (str_starts_with($request->server['request_uri'], '/payments-summary') && $request->server['request_method'] === 'GET') {
             $processor->handleSummary($request, $response);
         } else {
-            $response->status(404)->end();
+            $response->status(404);
+            $response->end("Not Found");
         }
     } catch (Throwable $e) {
         error_log("Internal Server Error: " . $e->getMessage());
-        $response->status(500)->end();
+        $response->status(500);
+        $response->end("Internal Server Error");
     }
 });
 

@@ -26,7 +26,7 @@ class PaymentProcessor
     {
         $data = json_decode($request->getContent(), true);
         if (json_last_error() !== JSON_ERROR_NONE || !isset($data['correlationId']) || !isset($data['amount'])) {
-            $response->status(400)->end();
+            $response->status(400);
             return;
         }
 
@@ -38,31 +38,43 @@ class PaymentProcessor
 
         $use_default = $default_latency < self::ACCEPTABLE_LATENCY_MS;
         $use_fallback = $fallback_latency < self::ACCEPTABLE_LATENCY_MS;
+        error_log("Default latency: $default_latency, Fallback latency: $fallback_latency");
+        error_log("Use fallback: $use_fallback");
+        error_log("Use default: $use_default");
 
         if ($use_default && $default_latency <= $fallback_latency) {
+            error_log("if 1: Using default processor.");
             if ($this->tryProcessor('default', $data)) {
+                error_log("Processing with default.");
                 $this->saveTransaction($correlationId, $amount, 'default', true);
-                $response->status(200)->end();
+                error_log("Processed with default processor successfully.");
+                $response->status(200);
                 return;
             }
         }
 
         if ($use_fallback) {
+            error_log("if 2: Using fallback processor.");
             if ($this->tryProcessor('fallback', $data)) {
+                error_log("Processing with fallback.");
                 $this->saveTransaction($correlationId, $amount, 'fallback', true);
-                $response->status(200)->end();
+                error_log("Processed with fallback processor successfully.");
+                $response->status(200);
                 return;
             }
         }
         
         if (!$use_default && $this->tryProcessor('default', $data)) {
+            error_log("Processed with default processor after fallback failure.");
             $this->saveTransaction($correlationId, $amount, 'default', true);
-            $response->status(200)->end();
+            $response->status(200);
             return;
         }
 
+        error_log("If default fallback is enabled, it will be used.");
         $this->saveTransaction($correlationId, $amount, 'fallback', false);
-        $response->status(200)->end();
+        error_log("All processors failed for correlation ID: $correlationId");
+        $response->status(200);
     }
     
     private function getLatency(string $serviceName): int
@@ -110,6 +122,9 @@ class PaymentProcessor
         $client->post('/payments', json_encode($data));
 
         $success = $client->statusCode >= 200 && $client->statusCode < 300;
+
+        error_log("Processor $serviceName response status: " . $client->statusCode);
+        error_log("Processor $serviceName response body: " . $client->body);
         
         if (!$success) {
             $this->redis->set('service:latency:' . $serviceName, 99999, ['ex' => 5]);
@@ -124,6 +139,6 @@ class PaymentProcessor
         $stmt = $this->pdo->prepare(
             "INSERT INTO transactions (correlation_id, amount, processor, success, created_at) VALUES (?, ?, ?, ?, NOW())"
         );
-        $stmt->execute([$correlationId, $amount, $processor, $success]);
+        $stmt->execute([$correlationId, $amount, $processor, ($success ? 1 : 0)]);
     }
 }

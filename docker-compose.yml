@@ -40,6 +40,8 @@ services:
       dockerfile: Dockerfile
     hostname: app1
     restart: always
+    environment:
+      - IS_HEALTH_CHECKER=true
     depends_on:
       db:
         condition: service_healthy
