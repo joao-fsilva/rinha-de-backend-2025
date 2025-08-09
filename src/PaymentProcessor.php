@@ -13,7 +13,7 @@ class PaymentProcessor
     private Redis $redis;
     private PDO $pdo;
     private const REQUEST_TIMEOUT = 5;
-    private const ACCEPTABLE_LATENCY_MS = 800;
+    private const ACCEPTABLE_LATENCY_MS = 10;
 
     public function __construct()
     {
@@ -38,40 +38,29 @@ class PaymentProcessor
 
         $use_default = $default_latency < self::ACCEPTABLE_LATENCY_MS;
         $use_fallback = $fallback_latency < self::ACCEPTABLE_LATENCY_MS;
-        error_log("Default latency: $default_latency, Fallback latency: $fallback_latency");
-        error_log("Use fallback: $use_fallback");
-        error_log("Use default: $use_default");
 
         if ($use_default && $default_latency <= $fallback_latency) {
-            error_log("if 1: Using default processor.");
             if ($this->tryProcessor('default', $data)) {
-                error_log("Processing with default.");
                 $this->saveTransaction($correlationId, $amount, 'default');
-                error_log("Processed with default processor successfully.");
                 $response->status(200);
                 return;
             }
         }
 
         if ($use_fallback) {
-            error_log("if 2: Using fallback processor.");
             if ($this->tryProcessor('fallback', $data)) {
-                error_log("Processing with fallback.");
                 $this->saveTransaction($correlationId, $amount, 'fallback');
-                error_log("Processed with fallback processor successfully.");
                 $response->status(200);
                 return;
             }
         }
         
         if (!$use_default && $this->tryProcessor('default', $data)) {
-            error_log("Processed with default processor after fallback failure.");
             $this->saveTransaction($correlationId, $amount, 'default');
             $response->status(200);
             return;
         }
 
-        error_log("All processors failed for correlation ID: $correlationId");
         $response->status(500);
     }
     
@@ -103,7 +92,7 @@ class PaymentProcessor
             $processor = $row['processor'];
             if (isset($summary[$processor])) {
                 $summary[$processor]['totalRequests'] = (int) $row['totalrequests'];
-                $summary[$processor]['totalAmount'] = (float)($row['totalamount'] / 100);
+                $summary[$processor]['totalAmount'] = (float)$row['totalamount'];
             }
         }
 
@@ -121,9 +110,6 @@ class PaymentProcessor
 
         $success = $client->statusCode >= 200 && $client->statusCode < 300;
 
-        error_log("Processor $serviceName response status: " . $client->statusCode);
-        error_log("Processor $serviceName response body: " . $client->body);
-        
         if (!$success) {
             $this->redis->set('service:latency:' . $serviceName, 99999, ['ex' => 5]);
         }

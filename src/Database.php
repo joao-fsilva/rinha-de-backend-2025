@@ -27,8 +27,7 @@ class Database
                 self::$pdo = new PDO($dsn, $user, $password, $options);
             } catch (PDOException $e) {
                 // Log the error and die to prevent the application from running without a DB
-                error_log("DB Connection Error: " . $e->getMessage());
-                die("Could not connect to the database.");
+                die("Could not connect to the database. error: " . $e->getMessage());
             }
         }
     }

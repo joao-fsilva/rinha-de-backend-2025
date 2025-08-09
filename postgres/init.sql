@@ -1,7 +1,7 @@
 -- Create the table for transactions
 CREATE TABLE transactions (
     correlation_id uuid PRIMARY KEY,
-    amount INT NOT NULL,
+    amount DECIMAL NOT NULL,
     processor VARCHAR(10) NOT NULL,
     created_at TIMESTAMP NOT NULL
 );
