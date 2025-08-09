@@ -41,20 +41,26 @@ $server->on('workerStart', function (Server $server, int $workerId) use (&$proce
 });
 
 $server->on('request', function (Request $request, Response $response) use (&$processor) {
-    error_log("server.php: Request event triggered.");
+    $body = null;
     try {
         if ($request->server['request_uri'] === '/payments' && $request->server['request_method'] === 'POST') {
             $processor->handlePayment($request, $response);
         } elseif (str_starts_with($request->server['request_uri'], '/payments-summary') && $request->server['request_method'] === 'GET') {
-            $processor->handleSummary($request, $response);
+            $body = $processor->handleSummary($request, $response);
         } else {
             $response->status(404);
-            $response->end("Not Found");
+            $body = "Not Found";
         }
     } catch (Throwable $e) {
         error_log("Internal Server Error: " . $e->getMessage());
-        $response->status(500);
-        $response->end("Internal Server Error");
+        if ($response->isWritable()) {
+            $response->status(500);
+            $body = "Internal Server Error";
+        }
+    } finally {
+        if ($response->isWritable()) {
+            $response->end($body);
+        }
     }
 });
 

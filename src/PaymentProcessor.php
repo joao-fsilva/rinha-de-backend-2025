@@ -31,7 +31,7 @@ class PaymentProcessor
         }
 
         $correlationId = (string) $data['correlationId'];
-        $amount = (int) $data['amount'];
+        $amount = (int)($data['amount'] * 100);
 
         $default_latency = $this->getLatency('default');
         $fallback_latency = $this->getLatency('fallback');
@@ -74,7 +74,7 @@ class PaymentProcessor
         error_log("If default fallback is enabled, it will be used.");
         $this->saveTransaction($correlationId, $amount, 'fallback', false);
         error_log("All processors failed for correlation ID: $correlationId");
-        $response->status(200);
+        $response->status(500);
     }
     
     private function getLatency(string $serviceName): int
@@ -82,7 +82,7 @@ class PaymentProcessor
         return (int)($this->redis->get('service:latency:' . $serviceName) ?? 99999);
     }
 
-    public function handleSummary(Request $request, Response $response): void
+    public function handleSummary(Request $request, Response $response): string
     {
         $from = $request->get['from'] ?? '1970-01-01T00:00:00.000Z';
         $to = $request->get['to'] ?? '2100-01-01T00:00:00.000Z';
@@ -105,12 +105,12 @@ class PaymentProcessor
             $processor = $row['processor'];
             if (isset($summary[$processor])) {
                 $summary[$processor]['totalRequests'] = (int) $row['totalrequests'];
-                $summary[$processor]['totalAmount'] = (int) $row['totalamount'];
+                $summary[$processor]['totalAmount'] = (float)($row['totalamount'] / 100);
             }
         }
 
         $response->header('Content-Type', 'application/json');
-        $response->end(json_encode($summary));
+        return json_encode($summary);
     }
 
     private function tryProcessor(string $serviceName, array $data): bool
