@@ -1,11 +1,9 @@
 -- Create the table for transactions
 CREATE TABLE transactions (
-    id SERIAL PRIMARY KEY,
-    correlation_id VARCHAR(36) NOT NULL,
+    correlation_id uuid PRIMARY KEY,
     amount INT NOT NULL,
     processor VARCHAR(10) NOT NULL,
-    success BOOLEAN NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMP NOT NULL
 );
 
 -- Create an index on the timestamp for faster summary queries

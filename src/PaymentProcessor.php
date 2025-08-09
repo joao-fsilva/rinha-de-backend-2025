@@ -46,7 +46,7 @@ class PaymentProcessor
             error_log("if 1: Using default processor.");
             if ($this->tryProcessor('default', $data)) {
                 error_log("Processing with default.");
-                $this->saveTransaction($correlationId, $amount, 'default', true);
+                $this->saveTransaction($correlationId, $amount, 'default');
                 error_log("Processed with default processor successfully.");
                 $response->status(200);
                 return;
@@ -57,7 +57,7 @@ class PaymentProcessor
             error_log("if 2: Using fallback processor.");
             if ($this->tryProcessor('fallback', $data)) {
                 error_log("Processing with fallback.");
-                $this->saveTransaction($correlationId, $amount, 'fallback', true);
+                $this->saveTransaction($correlationId, $amount, 'fallback');
                 error_log("Processed with fallback processor successfully.");
                 $response->status(200);
                 return;
@@ -66,13 +66,11 @@ class PaymentProcessor
         
         if (!$use_default && $this->tryProcessor('default', $data)) {
             error_log("Processed with default processor after fallback failure.");
-            $this->saveTransaction($correlationId, $amount, 'default', true);
+            $this->saveTransaction($correlationId, $amount, 'default');
             $response->status(200);
             return;
         }
 
-        error_log("If default fallback is enabled, it will be used.");
-        $this->saveTransaction($correlationId, $amount, 'fallback', false);
         error_log("All processors failed for correlation ID: $correlationId");
         $response->status(500);
     }
@@ -90,7 +88,7 @@ class PaymentProcessor
         $stmt = $this->pdo->prepare(
             "SELECT processor, COUNT(1) as totalRequests, SUM(amount) as totalAmount
              FROM transactions
-             WHERE success = true AND created_at BETWEEN :from AND :to
+             WHERE created_at BETWEEN :from AND :to
              GROUP BY processor"
         );
         $stmt->execute([':from' => $from, ':to' => $to]);
@@ -134,11 +132,11 @@ class PaymentProcessor
         return $success;
     }
 
-    private function saveTransaction(string $correlationId, int $amount, string $processor, bool $success): void
+    private function saveTransaction(string $correlationId, int $amount, string $processor): void
     {
         $stmt = $this->pdo->prepare(
-            "INSERT INTO transactions (correlation_id, amount, processor, success, created_at) VALUES (?, ?, ?, ?, NOW())"
+            "INSERT INTO transactions (correlation_id, amount, processor, created_at) VALUES (?, ?, ?, NOW())"
         );
-        $stmt->execute([$correlationId, $amount, $processor, ($success ? 1 : 0)]);
+        $stmt->execute([$correlationId, $amount, $processor]);
     }
 }
