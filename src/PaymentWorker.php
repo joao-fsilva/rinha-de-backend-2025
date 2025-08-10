@@ -29,7 +29,7 @@ class PaymentWorker
                         if ($item && isset($item[1])) {
                             $data = json_decode($item[1], true);
                             if (json_last_error() === JSON_ERROR_NONE) {
-                                $this->processPayment($redis, $data);
+                                $this->processPayment($redis, $data, $item[1]);
                             } else {
                                 error_log("Worker #{$i}: Failed to decode JSON: " . $item[1]);
                             }
@@ -47,7 +47,7 @@ class PaymentWorker
         }
     }
 
-    private function processPayment(Redis $redis, array $data): void
+    private function processPayment(Redis $redis, array $data, string $originalItem): void
     {
         $correlationId = (string) $data['correlationId'];
         $amount = (float) $data['amount'];
@@ -107,7 +107,7 @@ class PaymentWorker
     {
         $pdo = null;
         try {
-            $pdo = $this->pdoPool->get();
+            $pdo = $this->pdoPool->get(); // Get from PdoPool
             $stmt = $pdo->prepare(
                 "INSERT INTO transactions (correlation_id, amount, processor, created_at) VALUES (?, ?, ?, NOW())"
             );
@@ -116,7 +116,7 @@ class PaymentWorker
             error_log("Failed to save transaction: " . $e->getMessage());
         } finally {
             if ($pdo) {
-                $this->pdoPool->put($pdo);
+                $this->pdoPool->put($pdo); // Put back to PdoPool
             }
         }
     }

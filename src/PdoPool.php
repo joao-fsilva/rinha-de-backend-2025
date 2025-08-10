@@ -15,12 +15,11 @@ class PdoPool
         for ($i = 0; $i < $size; $i++) {
             $user = 'rinhabackend';
             $password ='rinhabackend';
-
             $dsn = "pgsql:host=db;port=5432;dbname=rinhabackend";
 
-            // Persist the connection to avoid reconnecting on every request
+            // High-performance, reusing pool.
+            // ATTR_PERSISTENT MUST be disabled.
             $options = [
-                PDO::ATTR_PERSISTENT => true,
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             ];
@@ -43,6 +42,13 @@ class PdoPool
 
     public function close(): void
     {
+        while (!$this->pool->isEmpty()) {
+            $pdo = $this->pool->pop(0.001);
+            if ($pdo instanceof PDO) {
+                // PDO objects are closed by destroying them.
+                $pdo = null;
+            }
+        }
         $this->pool->close();
     }
 }

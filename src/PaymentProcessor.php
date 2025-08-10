@@ -5,6 +5,9 @@ namespace App;
 use Swoole\Http\Request;
 use Swoole\Http\Response;
 use PDO;
+use Redis;
+use App\RedisPool;
+use App\PdoPool;
 
 class PaymentProcessor
 {

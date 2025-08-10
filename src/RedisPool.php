@@ -14,7 +14,7 @@ class RedisPool
         $this->pool = new Channel($size);
         for ($i = 0; $i < $size; $i++) {
             $redis = new Redis();
-            // Add a read_timeout to keep the connection alive during blPop
+            // read_timeout para manter a conexão viva durante blPop
             $redis->pconnect('cache', 6379, 0.0, null, 0, 300); 
             $this->put($redis);
         }
