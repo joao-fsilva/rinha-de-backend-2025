@@ -2,24 +2,16 @@
 
 namespace App;
 
-use Redis;
 use Swoole\Http\Request;
 use Swoole\Http\Response;
-use Swoole\Coroutine\Http\Client;
 use PDO;
 
 class PaymentProcessor
 {
-    private Redis $redis;
-    private PDO $pdo;
-    private const REQUEST_TIMEOUT = 5;
-    private const ACCEPTABLE_LATENCY_MS = 10;
+    private const PAYMENT_QUEUE_KEY = 'payment_queue';
 
-    public function __construct()
+    public function __construct(private RedisPool $redisPool, private PdoPool $pdoPool)
     {
-        $this->redis = new Redis();
-        $this->redis->pconnect(getenv('REDIS_HOST') ?: 'cache');
-        $this->pdo = (new Database())->getPdo();
     }
 
     public function handlePayment(Request $request, Response $response): void
@@ -30,43 +22,19 @@ class PaymentProcessor
             return;
         }
 
-        $correlationId = (string) $data['correlationId'];
-        $amount = (float) $data['amount'];
-
-        $default_latency = $this->getLatency('default');
-        $fallback_latency = $this->getLatency('fallback');
-
-        $use_default = $default_latency < self::ACCEPTABLE_LATENCY_MS;
-        $use_fallback = $fallback_latency < self::ACCEPTABLE_LATENCY_MS;
-
-        if ($use_default && $default_latency <= $fallback_latency) {
-            if ($this->tryProcessor('default', $data)) {
-                $this->saveTransaction($correlationId, $amount, 'default');
-                $response->status(200);
-                return;
-            }
-        }
-
-        if ($use_fallback) {
-            if ($this->tryProcessor('fallback', $data)) {
-                $this->saveTransaction($correlationId, $amount, 'fallback');
-                $response->status(200);
-                return;
-            }
-        }
-        
-        if (!$use_default && $this->tryProcessor('default', $data)) {
-            $this->saveTransaction($correlationId, $amount, 'default');
+        $redis = null;
+        try {
+            $redis = $this->redisPool->get();
+            $redis->rPush(self::PAYMENT_QUEUE_KEY, $request->getContent());
             $response->status(200);
-            return;
+        } catch (\Throwable $e) {
+            error_log("Failed to queue payment: " . $e->getMessage());
+            $response->status(500);
+        } finally {
+            if ($redis) {
+                $this->redisPool->put($redis);
+            }
         }
-
-        $response->status(500);
-    }
-    
-    private function getLatency(string $serviceName): int
-    {
-        return (int)($this->redis->get('service:latency:' . $serviceName) ?? 99999);
     }
 
     public function handleSummary(Request $request, Response $response): string
@@ -74,14 +42,27 @@ class PaymentProcessor
         $from = $request->get['from'] ?? '1970-01-01T00:00:00.000Z';
         $to = $request->get['to'] ?? '2100-01-01T00:00:00.000Z';
 
-        $stmt = $this->pdo->prepare(
-            "SELECT processor, COUNT(1) as totalRequests, SUM(amount) as totalAmount
-             FROM transactions
-             WHERE created_at BETWEEN :from AND :to
-             GROUP BY processor"
-        );
-        $stmt->execute([':from' => $from, ':to' => $to]);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $pdo = null;
+        $rows = [];
+        try {
+            $pdo = $this->pdoPool->get();
+            $stmt = $pdo->prepare(
+                "SELECT processor, COUNT(1) as totalRequests, SUM(amount) as totalAmount
+                 FROM transactions
+                 WHERE created_at BETWEEN :from AND :to
+                 GROUP BY processor"
+            );
+            $stmt->execute([':from' => $from, ':to' => $to]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\Throwable $e) {
+            error_log("Failed to get summary: " . $e->getMessage());
+            $response->status(500);
+            return '{"error":"Failed to retrieve summary"}';
+        } finally {
+            if ($pdo) {
+                $this->pdoPool->put($pdo);
+            }
+        }
 
         $summary = [
             'default' => ['totalRequests' => 0, 'totalAmount' => 0],
@@ -98,31 +79,5 @@ class PaymentProcessor
 
         $response->header('Content-Type', 'application/json');
         return json_encode($summary);
-    }
-
-    private function tryProcessor(string $serviceName, array $data): bool
-    {
-        $host = $serviceName === 'default' ? 'payment-processor-default' : 'payment-processor-fallback';
-        $client = new Client($host, 8080);
-        $client->setHeaders(['Content-Type' => 'application/json', 'Connection' => 'keep-alive']);
-        $client->set(['timeout' => self::REQUEST_TIMEOUT]);
-        $client->post('/payments', json_encode($data));
-
-        $success = $client->statusCode >= 200 && $client->statusCode < 300;
-
-        if (!$success) {
-            $this->redis->set('service:latency:' . $serviceName, 99999, ['ex' => 5]);
-        }
-        
-        $client->close();
-        return $success;
-    }
-
-    private function saveTransaction(string $correlationId, float $amount, string $processor): void
-    {
-        $stmt = $this->pdo->prepare(
-            "INSERT INTO transactions (correlation_id, amount, processor, created_at) VALUES (?, ?, ?, NOW())"
-        );
-        $stmt->execute([$correlationId, $amount, $processor]);
     }
 }

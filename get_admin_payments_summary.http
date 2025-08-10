@@ -1,0 +1,3 @@
+GET http://localhost:8001/admin/payments-summary
+X-rinha-token: 123
+Content-Type: application/json

@@ -6,8 +6,6 @@ use Redis;
 
 class HealthCheck
 {
-    private Redis $redis;
-
     private const SERVICES = [
         'default' => ['host' => 'payment-processor-default', 'port' => 8080],
         'fallback' => ['host' => 'payment-processor-fallback', 'port' => 8080]
@@ -18,10 +16,8 @@ class HealthCheck
     private const LATENCY_KEY_PREFIX = 'service:latency:';
     private const UNHEALTHY_LATENCY = 99999; // Valor para representar um serviço offline/lento
 
-    public function __construct()
+    public function __construct(private RedisPool $pool)
     {
-        $this->redis = new Redis();
-        $this->redis->pconnect('cache');
     }
 
     public function start(): void
@@ -45,6 +41,7 @@ class HealthCheck
     private function checkService(string $name, string $host, int $port): void
     {
         $latency = self::UNHEALTHY_LATENCY; // Assume o pior
+        $redis = null;
         try {
             $client = new \Swoole\Coroutine\Http\Client($host, $port);
             $client->set(['timeout' => 4]);
@@ -58,8 +55,18 @@ class HealthCheck
             }
             $client->close();
         } catch (\Throwable $e) {
+            error_log("HealthCheck HTTP client error: " . $e->getMessage());
         } finally {
-            $this->redis->set(self::LATENCY_KEY_PREFIX . $name, $latency, ['ex' => self::HEALTH_KEY_TTL_S]);
+            try {
+                $redis = $this->pool->get();
+                $redis->set(self::LATENCY_KEY_PREFIX . $name, $latency, ['ex' => self::HEALTH_KEY_TTL_S]);
+            } catch (\Throwable $e) {
+                error_log("HealthCheck failed to update Redis: " . $e->getMessage());
+            } finally {
+                if ($redis) {
+                    $this->pool->put($redis);
+                }
+            }
         }
     }
 }
