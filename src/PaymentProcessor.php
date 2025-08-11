@@ -4,16 +4,12 @@ namespace App;
 
 use Swoole\Http\Request;
 use Swoole\Http\Response;
-use PDO;
-use Redis;
-use App\RedisPool;
-use App\PdoPool;
 
 class PaymentProcessor
 {
     private const PAYMENT_QUEUE_KEY = 'payment_queue';
 
-    public function __construct(private RedisPool $redisPool, private PdoPool $pdoPool)
+    public function __construct(private RedisPool $redisPool)
     {
     }
 
@@ -45,42 +41,45 @@ class PaymentProcessor
         $from = $request->get['from'] ?? '1970-01-01T00:00:00.000Z';
         $to = $request->get['to'] ?? '2100-01-01T00:00:00.000Z';
 
-        $pdo = null;
-        $rows = [];
+        $redis = null;
+        $summary = [
+            'default' => ['totalRequests' => 0, 'totalAmount' => 0],
+            'fallback' => ['totalRequests' => 0, 'totalAmount' => 0]
+        ];
+
         try {
-            $pdo = $this->pdoPool->get();
-            $stmt = $pdo->prepare(
-                "SELECT processor, COUNT(1) as totalRequests, SUM(amount) as totalAmount
-                 FROM transactions
-                 WHERE created_at BETWEEN :from AND :to
-                 GROUP BY processor"
-            );
-            $stmt->execute([':from' => $from, ':to' => $to]);
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $redis = $this->redisPool->get();
+            $allTransactions = $redis->lRange('transactions', 0, -1);
+            foreach ($allTransactions as $item) {
+                $transaction = json_decode($item, true);
+                if (!$transaction) {
+                    continue;
+                }
+                $createdAt = $transaction['created_at'] ?? null;
+                $processor = $transaction['processor'] ?? null;
+                $amount = $transaction['amount'] ?? 0;
+                if (!$createdAt || !$processor) {
+                    continue;
+                }
+                if ($createdAt >= $from && $createdAt <= $to) {
+                    $summary[$processor]['totalRequests']++;
+                    $summary[$processor]['totalAmount'] += $amount;
+                }
+            }
+
+            $summary['default']['totalAmount'] = round($summary['default']['totalAmount'], 2);
+            $summary['fallback']['totalAmount'] = round($summary['fallback']['totalAmount'], 2);
+
+            $response->header('Content-Type', 'application/json');
+            return json_encode($summary);
         } catch (\Throwable $e) {
             error_log("Failed to get summary: " . $e->getMessage());
             $response->status(500);
             return '{"error":"Failed to retrieve summary"}';
         } finally {
-            if ($pdo) {
-                $this->pdoPool->put($pdo);
+            if ($redis) {
+                $this->redisPool->put($redis);
             }
         }
-
-        $summary = [
-            'default' => ['totalRequests' => 0, 'totalAmount' => 0],
-            'fallback' => ['totalRequests' => 0, 'totalAmount' => 0],
-        ];
-
-        foreach ($rows as $row) {
-            $processor = $row['processor'];
-            if (isset($summary[$processor])) {
-                $summary[$processor]['totalRequests'] = (int) $row['totalrequests'];
-                $summary[$processor]['totalAmount'] = (float)$row['totalamount'];
-            }
-        }
-
-        $response->header('Content-Type', 'application/json');
-        return json_encode($summary);
     }
 }

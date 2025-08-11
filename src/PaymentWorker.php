@@ -13,7 +13,7 @@ class PaymentWorker
     private const REQUEST_TIMEOUT = 5;
     private const ACCEPTABLE_LATENCY_MS = 10;
 
-    public function __construct(private RedisPool $redisPool, private PdoPool $pdoPool)
+    public function __construct(private RedisPool $redisPool)
     {
     }
 
@@ -29,7 +29,7 @@ class PaymentWorker
                         if ($item && isset($item[1])) {
                             $data = json_decode($item[1], true);
                             if (json_last_error() === JSON_ERROR_NONE) {
-                                $this->processPayment($redis, $data, $item[1]);
+                                $this->processPayment($redis, $data);
                             } else {
                                 error_log("Worker #{$i}: Failed to decode JSON: " . $item[1]);
                             }
@@ -47,7 +47,7 @@ class PaymentWorker
         }
     }
 
-    private function processPayment(Redis $redis, array $data, string $originalItem): void
+    private function processPayment(Redis $redis, array $data): void
     {
         $correlationId = (string) $data['correlationId'];
         $amount = (float) $data['amount'];
@@ -77,7 +77,7 @@ class PaymentWorker
             return;
         }
 
-        error_log("All payment processors failed for correlationId: {$correlationId}");
+        $redis->rPush(self::PAYMENT_QUEUE_KEY, json_encode($data));
     }
     
     private function getLatency(Redis $redis, string $serviceName): int
@@ -105,18 +105,21 @@ class PaymentWorker
 
     private function saveTransaction(string $correlationId, float $amount, string $processor): void
     {
-        $pdo = null;
+        $redis = null;
         try {
-            $pdo = $this->pdoPool->get(); // Get from PdoPool
-            $stmt = $pdo->prepare(
-                "INSERT INTO transactions (correlation_id, amount, processor, created_at) VALUES (?, ?, ?, NOW())"
-            );
-            $stmt->execute([$correlationId, $amount, $processor]);
+            $redis = $this->redisPool->get();
+            $transaction = [
+                'correlation_id' => $correlationId,
+                'amount' => $amount,
+                'processor' => $processor,
+                'created_at' => date('c'),
+            ];
+            $redis->rPush('transactions', json_encode($transaction));
         } catch (\Throwable $e) {
-            error_log("Failed to save transaction: " . $e->getMessage());
+            error_log("Failed to save transaction in Redis: " . $e->getMessage());
         } finally {
-            if ($pdo) {
-                $this->pdoPool->put($pdo); // Put back to PdoPool
+            if ($redis) {
+                $this->redisPool->put($redis);
             }
         }
     }

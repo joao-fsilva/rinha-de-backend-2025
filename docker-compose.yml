@@ -8,30 +8,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.1'
-          memory: '50M'
-    networks:
-      - rinha-net
-  db:
-    image: postgres:16-alpine
-    hostname: db
-    restart: always
-    environment:
-      - POSTGRES_PASSWORD=rinhabackend
-      - POSTGRES_USER=rinhabackend
-      - POSTGRES_DB=rinhabackend
-    volumes:
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rinhabackend -d rinhabackend"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: '0.3'
-          memory: '120M'
+          cpus: '0.2'
+          memory: '100M'
     networks:
       - rinha-net
   app1:
@@ -43,8 +21,6 @@ services:
     environment:
       - IS_HEALTH_CHECKER=true
     depends_on:
-      db:
-        condition: service_healthy
       cache:
         condition: service_started
     networks:
@@ -53,8 +29,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: '75M'
+          cpus: '0.6'
+          memory: '100M'
 
   app2:
     build:
@@ -63,8 +39,6 @@ services:
     hostname: app2
     restart: always
     depends_on:
-      db:
-        condition: service_healthy
       cache:
         condition: service_started
     networks:
@@ -73,10 +47,9 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: '75M'
+          cpus: '0.6'
+          memory: '100M'
 
-  # Load Balancer
   nginx:
     image: nginx:1.25-alpine
     volumes:

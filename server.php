@@ -6,7 +6,7 @@ require __DIR__ . '/vendor/autoload.php';
 
 
 use App\RedisPool;
-use App\PdoPool;
+
 use Swoole\Http\Server;
 use Swoole\Http\Request;
 use Swoole\Http\Response;
@@ -23,15 +23,15 @@ $server->set([
 ]);
 
 $processor = null;
-$redisPool = null; // Re-add
-$pdoPool = null;   // Re-add
+$redisPool = null;
 
 // This callback will be executed when the worker process starts
-$server->on('workerStart', function (Server $server, int $workerId) use (&$processor, &$redisPool, &$pdoPool) {
-    $redisPool = new RedisPool(45);
-    $pdoPool = new PdoPool(10);
+$server->on('workerStart', function (Server $server, int $workerId) use (&$processor, &$redisPool) {
+    $workers = 10;
 
-    $processor = new PaymentProcessor($redisPool, $pdoPool);
+    $redisPool = new RedisPool($workers + 5);
+
+    $processor = new PaymentProcessor($redisPool);
 
     if ($workerId === 0 && getenv('IS_HEALTH_CHECKER') === 'true') {
         go(function() use($redisPool) {
@@ -40,19 +40,15 @@ $server->on('workerStart', function (Server $server, int $workerId) use (&$proce
         });
     }
 
-    $paymentWorker = new \App\PaymentWorker($redisPool, $pdoPool);
-    $paymentWorker->start(40);
+    $paymentWorker = new \App\PaymentWorker($redisPool);
+    $paymentWorker->start($workers);
 });
 
 // Re-add workerStop
-$server->on('workerStop', function(Server $server, int $workerId) use ($redisPool, $pdoPool) {
+$server->on('workerStop', function(Server $server, int $workerId) use ($redisPool) {
     if ($redisPool) {
         error_log("Closing Redis pool.");
         $redisPool->close();
-    }
-    if ($pdoPool) {
-        error_log("Closing PDO pool.");
-        $pdoPool->close();
     }
 });
 

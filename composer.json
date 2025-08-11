@@ -12,7 +12,7 @@
     "minimum-stability": "stable",
     "require": {
       "ext-swoole": "*",
-      "ext-pdo": "*"
+      "ext-redis": "*"
     },
     "autoload": {
         "psr-4": {
