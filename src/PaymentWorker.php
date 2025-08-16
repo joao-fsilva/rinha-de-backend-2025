@@ -64,7 +64,7 @@ class PaymentWorker
         $use_default = $default_latency < self::ACCEPTABLE_LATENCY_MS;
         $use_fallback = $fallback_latency < self::ACCEPTABLE_LATENCY_MS;
 
-        if ($use_default && $default_latency <= $fallback_latency) {
+        if ($use_default || ($default_latency <= $fallback_latency || (($default_latency * 3) < $fallback_latency))) {
             if ($this->tryProcessor($redis, 'default', $data)) {
                 $this->saveTransaction($correlationId, $amount, 'default', $requestedAt);
                 return;
