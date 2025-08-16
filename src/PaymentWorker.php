@@ -52,6 +52,12 @@ class PaymentWorker
         $correlationId = (string) $data['correlationId'];
         $amount = (float) $data['amount'];
 
+        $preciseTimestamp = microtime(true);
+        $date = \DateTime::createFromFormat('U.u', sprintf('%.6f', $preciseTimestamp));
+        $requestedAt = $date->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\TH:i:s.u\Z');
+
+        $data['requestedAt'] = $requestedAt;
+
         $default_latency = $this->getLatency($redis, 'default');
         $fallback_latency = $this->getLatency($redis, 'fallback');
 
@@ -60,20 +66,20 @@ class PaymentWorker
 
         if ($use_default && $default_latency <= $fallback_latency) {
             if ($this->tryProcessor($redis, 'default', $data)) {
-                $this->saveTransaction($correlationId, $amount, 'default');
+                $this->saveTransaction($correlationId, $amount, 'default', $requestedAt);
                 return;
             }
         }
 
         if ($use_fallback) {
             if ($this->tryProcessor($redis, 'fallback', $data)) {
-                $this->saveTransaction($correlationId, $amount, 'fallback');
+                $this->saveTransaction($correlationId, $amount, 'fallback', $requestedAt);
                 return;
             }
         }
         
         if (!$use_default && $this->tryProcessor($redis, 'default', $data)) {
-            $this->saveTransaction($correlationId, $amount, 'default');
+            $this->saveTransaction($correlationId, $amount, 'default', $requestedAt);
             return;
         }
 
@@ -93,6 +99,8 @@ class PaymentWorker
         $client->set(['timeout' => self::REQUEST_TIMEOUT]);
         $client->post('/payments', json_encode($data));
 
+//        error_log("statusCode: " . $client->statusCode . " for service: " . $serviceName);
+
         $success = $client->statusCode >= 200 && $client->statusCode < 300;
 
         if (!$success) {
@@ -103,7 +111,7 @@ class PaymentWorker
         return $success;
     }
 
-    private function saveTransaction(string $correlationId, float $amount, string $processor): void
+    private function saveTransaction(string $correlationId, float $amount, string $processor, string $requestedAt): void
     {
         $redis = null;
         try {
@@ -112,7 +120,7 @@ class PaymentWorker
                 'correlation_id' => $correlationId,
                 'amount' => $amount,
                 'processor' => $processor,
-                'created_at' => date('c'),
+                'created_at' => $requestedAt,
             ];
             $redis->rPush('transactions', json_encode($transaction));
         } catch (\Throwable $e) {

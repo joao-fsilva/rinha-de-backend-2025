@@ -1,0 +1,3 @@
+POST http://localhost:8001/admin/purge-payments
+X-rinha-token: 123
+Content-Type: application/json
